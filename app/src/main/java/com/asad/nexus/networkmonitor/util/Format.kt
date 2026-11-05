@@ -12,6 +12,20 @@ object Format {
         }
     }
 
+    /** Value and unit split for the status bar icon, e.g. ("68", "KB/s"). */
+    fun shortSpeed(bps: Long): Pair<String, String> {
+        val b = bps.coerceAtLeast(0L).toDouble()
+        return when {
+            b >= 1024.0 * 1024.0 -> {
+                val v = b / (1024.0 * 1024.0)
+                val s = if (v < 10.0) String.format(Locale.US, "%.1f", v) else String.format(Locale.US, "%.0f", v)
+                s to "MB/s"
+            }
+            b >= 1024.0 -> String.format(Locale.US, "%.0f", b / 1024.0) to "KB/s"
+            else -> "${bps.coerceAtLeast(0L)}" to "B/s"
+        }
+    }
+
     fun bytes(n: Long): String {
         val b = n.coerceAtLeast(0L).toDouble()
         return when {

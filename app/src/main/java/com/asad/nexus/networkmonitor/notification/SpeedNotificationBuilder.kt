@@ -9,8 +9,12 @@ import android.content.Intent
 import android.view.View
 import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
+import androidx.core.graphics.drawable.IconCompat
 import com.asad.nexus.networkmonitor.MainActivity
 import com.asad.nexus.networkmonitor.R
+import com.asad.nexus.networkmonitor.data.AppSpeed
+import com.asad.nexus.networkmonitor.data.NotifConfig
+import com.asad.nexus.networkmonitor.data.Prefs
 import com.asad.nexus.networkmonitor.data.SpeedSnapshot
 import com.asad.nexus.networkmonitor.engine.AppInfoCache
 import com.asad.nexus.networkmonitor.service.MonitorService
@@ -57,9 +61,9 @@ class SpeedNotificationBuilder(
         nm.createNotificationChannel(channel)
     }
 
-    fun build(s: SpeedSnapshot, compact: Boolean, maxRows: Int): Notification {
-        val title = "Total \u2193 ${Format.speed(s.totalRxBps)} | \u2191 ${Format.speed(s.totalTxBps)}"
-        val status = statusLine(s)
+    fun build(s: SpeedSnapshot, apps: List<AppSpeed>, cfg: NotifConfig): Notification {
+        val title = if (cfg.showTotal) totalLine(s, cfg) else "Nexus Network Monitor"
+        val status = statusLine(s, cfg)
 
         val collapsed = RemoteViews(context.packageName, R.layout.notif_collapsed).apply {
             setTextViewText(R.id.title, title)
@@ -67,7 +71,7 @@ class SpeedNotificationBuilder(
         }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_speed)
+            .setSmallIcon(smallIcon(s, cfg.iconMode))
             .setContentTitle(title)
             .setContentText(status)
             .setStyle(NotificationCompat.DecoratedCustomViewStyle())
@@ -81,20 +85,17 @@ class SpeedNotificationBuilder(
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setPriority(NotificationCompat.PRIORITY_LOW)
 
-        if (!compact) {
+        if (!cfg.compact && cfg.showApps) {
             val expanded = RemoteViews(context.packageName, R.layout.notif_expanded)
             expanded.setTextViewText(R.id.title, title)
             expanded.setTextViewText(R.id.status, status)
             rows.forEachIndexed { i, r ->
-                val app = s.apps.getOrNull(i)
-                if (app != null && i < maxRows) {
+                val app = apps.getOrNull(i)
+                if (app != null && i < cfg.rows) {
                     expanded.setViewVisibility(r.row, View.VISIBLE)
                     expanded.setImageViewBitmap(r.icon, cache.icon(app.packageName))
                     expanded.setTextViewText(r.name, app.label)
-                    expanded.setTextViewText(
-                        r.speed,
-                        "\u2193 ${Format.speed(app.rxBps)} \u2191 ${Format.speed(app.txBps)}",
-                    )
+                    expanded.setTextViewText(r.speed, speedText(app.rxBps, app.txBps, cfg, " "))
                 } else {
                     expanded.setViewVisibility(r.row, View.GONE)
                 }
@@ -104,11 +105,35 @@ class SpeedNotificationBuilder(
         return builder.build()
     }
 
-    private fun statusLine(s: SpeedSnapshot): String = when {
+    /** Status bar icon: the live speed number (like a speed indicator), or a fixed icon. */
+    private fun smallIcon(s: SpeedSnapshot, mode: Int): IconCompat {
+        if (mode == Prefs.ICON_OFF || !s.totalAvailable) {
+            return IconCompat.createWithResource(context, R.drawable.ic_stat_speed)
+        }
+        val bps = when (mode) {
+            Prefs.ICON_UP -> s.totalTxBps
+            Prefs.ICON_COMBINED -> s.totalRxBps + s.totalTxBps
+            else -> s.totalRxBps
+        }
+        val (value, unit) = Format.shortSpeed(bps)
+        return IconCompat.createWithBitmap(StatusIcon.render(value, unit))
+    }
+
+    private fun speedText(rx: Long, tx: Long, cfg: NotifConfig, sep: String): String {
+        val parts = ArrayList<String>(2)
+        if (cfg.showDown) parts.add("\u2193 ${Format.speed(rx)}")
+        if (cfg.showUp) parts.add("\u2191 ${Format.speed(tx)}")
+        return parts.joinToString(sep)
+    }
+
+    private fun totalLine(s: SpeedSnapshot, cfg: NotifConfig): String =
+        "Total " + speedText(s.totalRxBps, s.totalTxBps, cfg, " | ")
+
+    private fun statusLine(s: SpeedSnapshot, cfg: NotifConfig): String = when {
         !s.totalAvailable -> "Total speed not supported on this device"
+        !cfg.showApps -> s.networkLabel
         !s.perAppAvailable -> "${s.networkLabel} \u00B7 Per-app: allow Usage Access in the app"
         s.appWindowSec == 0 -> "${s.networkLabel} \u00B7 Measuring apps..."
-        s.apps.isEmpty() -> "${s.networkLabel} \u00B7 No app traffic in last ${s.appWindowSec}s"
         else -> "${s.networkLabel} \u00B7 Apps: avg of last ${s.appWindowSec}s (may lag)"
     }
 

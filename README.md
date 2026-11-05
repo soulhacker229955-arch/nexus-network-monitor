@@ -1,4 +1,4 @@
-# Nexus Network Monitor (phase 1)
+# Nexus Network Monitor (v0.2.0)
 
 Created by Asad. Native Android (Kotlin, Jetpack Compose, Material 3). Package: `com.asad.nexus.networkmonitor`.
 
@@ -6,7 +6,13 @@ Created by Asad. Native Android (Kotlin, Jetpack Compose, Material 3). Package: 
 - Source written, **NOT compiled or run yet**. No APK has been built or tested on a device.
 - Build and test results must come from GitHub Actions or your own build.
 
-## What phase 1 does
+## What it does
+- Tabs: Home, Apps (choose which apps appear in the notification), Settings.
+- Status bar shows the live speed number (Download / Upload / Both / Off).
+- Notification settings: total on/off, apps on/off, compact, rows, download/upload visibility, sorting, refresh interval.
+- Permission card hides itself once granted; English setup guide (incl. Allow restricted settings).
+
+## Original phase 1 list
 - Foreground service (you start/stop it; notification is always visible while running).
 - Expanded notification: total download/upload plus top apps with icons and speeds. Compact mode available.
 - Dashboard: total speed, network type, bytes since boot, app list, permission status, notification settings.

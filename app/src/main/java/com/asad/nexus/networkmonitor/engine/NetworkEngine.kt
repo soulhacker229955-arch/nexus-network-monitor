@@ -101,6 +101,7 @@ class NetworkEngine(private val context: Context, private val cache: AppInfoCach
                 val txBps = SpeedMath.bytesPerSecond(p?.get(1) ?: 0L, c[1], elapsed)
                 if (rxBps <= 0L && txBps <= 0L) continue
                 val id = cache.resolve(uid)
+                cache.icon(id.packageName)
                 list.add(AppSpeed(uid, id.packageName, id.label, rxBps, txBps))
             }
             list.sortByDescending { it.rxBps + it.txBps }

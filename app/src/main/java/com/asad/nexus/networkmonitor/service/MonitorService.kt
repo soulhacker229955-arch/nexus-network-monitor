@@ -11,8 +11,10 @@ import com.asad.nexus.networkmonitor.NexusApp
 import com.asad.nexus.networkmonitor.data.MonitorState
 import com.asad.nexus.networkmonitor.data.Prefs
 import com.asad.nexus.networkmonitor.data.SpeedSnapshot
+import com.asad.nexus.networkmonitor.engine.AppInfoCache
 import com.asad.nexus.networkmonitor.engine.NetworkEngine
 import com.asad.nexus.networkmonitor.notification.SpeedNotificationBuilder
+import com.asad.nexus.networkmonitor.util.AppSelector
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,6 +29,7 @@ import kotlinx.coroutines.launch
 class MonitorService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var job: Job? = null
+    private lateinit var cache: AppInfoCache
     private lateinit var builder: SpeedNotificationBuilder
     private lateinit var engine: NetworkEngine
 
@@ -34,7 +37,7 @@ class MonitorService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        val cache = (application as NexusApp).appInfoCache
+        cache = (application as NexusApp).appInfoCache
         builder = SpeedNotificationBuilder(this, cache)
         engine = NetworkEngine(this, cache)
         builder.ensureChannel()
@@ -46,7 +49,7 @@ class MonitorService : Service() {
             return START_NOT_STICKY
         }
         try {
-            val first = builder.build(SpeedSnapshot(), Prefs.compact(this), Prefs.maxRows(this))
+            val first = builder.build(SpeedSnapshot(), emptyList(), Prefs.config(this))
             if (Build.VERSION.SDK_INT >= 34) {
                 startForeground(
                     SpeedNotificationBuilder.NOTIFICATION_ID, first,
@@ -69,19 +72,23 @@ class MonitorService : Service() {
     private suspend fun loop() {
         val nm = getSystemService(NotificationManager::class.java)
         while (currentCoroutineContext().isActive) {
+            var waitMs = 1000L
             try {
-                val compact = Prefs.compact(this)
-                val rows = Prefs.maxRows(this)
-                val snap = engine.sample(topN = 10)
+                val cfg = Prefs.config(this)
+                waitMs = cfg.refreshMs
+                val snap = engine.sample(topN = 40)
                 MonitorState.set(snap.copy(running = true))
+                val shown = AppSelector.select(
+                    snap.apps, cfg.selected, cfg.onlySelected, cfg.sort, cfg.rows,
+                ) { pkg -> cache.idleApp(pkg) }
                 nm?.notify(
                     SpeedNotificationBuilder.NOTIFICATION_ID,
-                    builder.build(snap, compact, rows),
+                    builder.build(snap, shown, cfg),
                 )
             } catch (e: Exception) {
                 Log.w(TAG, "sample failed: ${e.javaClass.simpleName}")
             }
-            delay(SAMPLE_INTERVAL_MS)
+            delay(waitMs)
         }
     }
 
@@ -95,6 +102,5 @@ class MonitorService : Service() {
     companion object {
         const val ACTION_STOP = "com.asad.nexus.networkmonitor.STOP"
         private const val TAG = "MonitorService"
-        private const val SAMPLE_INTERVAL_MS = 1000L
     }
 }
